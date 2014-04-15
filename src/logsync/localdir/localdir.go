@@ -144,7 +144,7 @@ func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
 	for _ = range time.Tick(time.Second) {
 		d.rwl.RLock()
 		flist := d.GetSortedFiles()
-		log.Info(d.Path, "loop", len(flist))
+		// log.Info(d.Path, "loop", len(flist))
 		for _, f := range flist {
 			waitTime := time.Second
 		reWrite:
@@ -177,7 +177,7 @@ func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
 			}
 		}
 		d.rwl.Unlock()
-		log.Info(d.Path, "remove", removed, "file")
+		// log.Info(d.Path, "remove", removed, "file")
 	}
 }
 
