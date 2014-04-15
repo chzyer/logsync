@@ -129,6 +129,7 @@ func (d *LocalDir) receiveEvent(errch chan error) {
 	for {
 		select {
 		case ev := <-d.watcher.Event:
+			log.Info("get event", ev)
 			// must be modify
 			d.setFile(ev.Name, true)
 		case err := <-d.watcher.Error:
