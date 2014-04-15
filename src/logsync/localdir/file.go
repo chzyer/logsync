@@ -146,6 +146,7 @@ func (f *File) Close() (err error) {
 	if f.file != nil {
 		err = f.file.Close()
 		f.file = nil
+		f.buf = nil
 	}
 	return
 }

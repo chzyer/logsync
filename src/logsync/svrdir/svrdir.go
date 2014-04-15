@@ -83,7 +83,6 @@ func (s *SvrDir) FileInfo(arg *FileOffsetArg, reply *FileOffsetReply) (err error
 		}
 		infos[f] = info
 	}
-	log.Info(infos)
 	reply.Infos = infos
 	return
 }

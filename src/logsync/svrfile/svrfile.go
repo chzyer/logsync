@@ -77,7 +77,6 @@ func (s *SvrFile) WriteFileAt(path string, buf []byte, at int64) (n int, err err
 	}
 
 	// 假设单个文件只有一个写入，没加锁
-	log.Info("writing", path)
 	n, err = f.WriteAt(buf, at)
 	return
 }
