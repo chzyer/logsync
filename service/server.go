@@ -18,8 +18,9 @@ var (
 )
 
 type Conf struct {
-	Path string `json:"path"`
+	WritePath string `json:"write_path"`
 	Listen string `json:"listen"`
+	Owner string `json:"owner"` // 留空表示试用当前用户
 }
 
 type Service struct {
@@ -35,6 +36,10 @@ func NewService(c *Conf) (s *Service, err error) {
 		return
 	}
 	s.ln = ln
+	s.file, err = svrfile.NewSvrFile(c.Owner)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -45,7 +50,7 @@ func (s *Service) Run() (err error) {
 			log.Error(err)
 			continue
 		}
-		go svfdir.HandleConn(conn)
+		go svrdir.ServeConn(s.file, conn)
 	}
 }
 
