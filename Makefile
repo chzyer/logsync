@@ -1,7 +1,9 @@
 export GOPATH := $(shell pwd)
 pwd := $(shell pwd)
 $(shell rm -fr pkg)
-all:
+all:server client
+
+server:
 	go build -o bin/server service/server.go
 
 client:

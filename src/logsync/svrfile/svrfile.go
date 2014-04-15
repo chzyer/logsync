@@ -23,6 +23,7 @@ func NewSvrFile(owner string) (s *SvrFile, err error) {
 		}
 		s.user = u
 	}
+	s.data = make(map[string]*os.File, 10<<10)
 	return
 }
 
