@@ -140,7 +140,7 @@ func (d *LocalDir) receiveEvent(errch chan error) {
 	for {
 		select {
 		case ev := <-d.watcher.Event:
-			log.Info("get event", ev)
+			// log.Info("get event", ev)
 			// must be modify
 			fname := filepath.Base(ev.Name)
 			switch {
@@ -150,6 +150,7 @@ func (d *LocalDir) receiveEvent(errch chan error) {
 					log.Error(err)
 				}
 			case ev.Match(inotify.IN_DELETE):
+				log.Info("get event", ev)
 				d.OnFileDelete(fname)
 			}
 		case err := <-d.watcher.Error:

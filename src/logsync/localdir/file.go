@@ -83,7 +83,7 @@ func (f *File) NeedClose(now time.Time) bool {
 }
 
 func (f *File) Updated() (err error) {
-	log.Info("set file", f.fname, "updated")
+	// log.Info("set file", f.fname, "updated")
 	err = f.initFile()
 	if err != nil {
 		return
