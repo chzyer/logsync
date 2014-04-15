@@ -58,6 +58,10 @@ func NewFile(dir, fname string, updated bool) (f *File, err error) {
 	if err != nil {
 		return
 	}
+	if stat.IsDir() {
+		err = ErrNotDirectory
+		return
+	}
 	f.updateTime = time.Now()
 	f.MTime = stat.ModTime()
 	f.Size = stat.Size()

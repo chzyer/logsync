@@ -61,7 +61,9 @@ func (d *LocalDir) GetSortedFiles() (ret []*File) {
 }
 
 // updated 表示是否更新File里面的updated值
-func (d *LocalDir) setFile(fname string, updated bool) (f *File) {
+// ok=false if type(fname)==directory or not exist(fname)
+func (d *LocalDir) setFile(fname string, updated bool) (f *File, ok bool) {
+	ok = true
 	d.rwl.RLock()
 	f = d.data[fname]
 	d.rwl.RUnlock()
@@ -74,6 +76,7 @@ func (d *LocalDir) setFile(fname string, updated bool) (f *File) {
 
 	f, err := NewFile(d.Path, fname, updated)
 	if err != nil {
+		ok = false
 		return
 	}
 	d.rwl.Lock()
@@ -111,11 +114,13 @@ func (d *LocalDir) updateFileList(rd *remotedir.RemoteDir) {
 			// 服务器标记删除的不添加
 			continue
 		}
-		f := d.setFile(fp, false)
-		f.SetOffset(item.Offset)
-		// 如果服务器offset小于文件大小，标记为更新
-		if f.Size > item.Offset {
-			f.Updated()
+		f, ok := d.setFile(fp, false)
+		if ok {
+			f.SetOffset(item.Offset)
+			// 如果服务器offset小于文件大小，标记为更新
+			if f.Size > item.Offset {
+				f.Updated()
+			}
 		}
 	}
 }
