@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/user"
 	"sync"
+	"logsync/log"
 	"path/filepath"
 )
 
@@ -49,12 +50,14 @@ func (s *SvrFile) getFile(path string) (f *os.File, err error) {
 	nf, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		// disk full
+		log.Error(err)
 		return
 	}
 	s.rwl.Lock()
 	f = s.data[path]
 	if f == nil {
 		s.data[path] = nf
+		f = nf
 		nf = nil
 	}
 	s.rwl.Unlock()
@@ -74,6 +77,7 @@ func (s *SvrFile) WriteFileAt(path string, buf []byte, at int64) (n int, err err
 	}
 
 	// 假设单个文件只有一个写入，没加锁
+	log.Info("writing", path)
 	n, err = f.WriteAt(buf, at)
 	return
 }

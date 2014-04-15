@@ -6,6 +6,7 @@ import (
 	"sync"
 	"errors"
 	"inotify"
+	"path/filepath"
 
 	"logsync/log"
 	"logsync/remotedir"
@@ -20,6 +21,10 @@ type LocalDir struct {
 	watcher *inotify.Watcher
 	err error
 	rwl sync.RWMutex
+
+	// 文件添加后，除非被删除，否则一直存留在data
+	// 当文件空闲时，会被关闭，File.file会置于nil
+	// 当文件被置于updated时，File.file会被打开
 	data map[string] *File
 }
 
@@ -39,7 +44,7 @@ func NewDir(p string) (d *LocalDir, err error) {
 		return
 	}
 
-	err = watcher.AddWatch(p, inotify.IN_MODIFY)
+	err = watcher.AddWatch(p, inotify.IN_MODIFY|inotify.IN_DELETE)
 	if err != nil {
 		return
 	}
@@ -54,43 +59,12 @@ func NewDir(p string) (d *LocalDir, err error) {
 func (d *LocalDir) GetSortedFiles() (ret []*File) {
 	ret = make([]*File, 0, len(d.data))
 	for _, f := range d.data {
+		if ! f.IsUpdated() {
+			continue
+		}
 		ret = append(ret, f)
 	}
 	SortFileSlice(ret)
-	return
-}
-
-// updated 表示是否更新File里面的updated值
-// ok=false if type(fname)==directory or not exist(fname)
-func (d *LocalDir) setFile(fname string, updated bool) (f *File, ok bool) {
-	ok = true
-	d.rwl.RLock()
-	f = d.data[fname]
-	d.rwl.RUnlock()
-	if f != nil {
-		if updated {
-			f.Updated()
-		}
-		return
-	}
-
-	f, err := NewFile(d.Path, fname, updated)
-	if err != nil {
-		ok = false
-		return
-	}
-	d.rwl.Lock()
-	defer d.rwl.Unlock()
-	nf, ok := d.data[fname]
-	if ! ok {
-		d.data[fname] = f
-		return
-	}
-
-	f = nf
-	if updated {
-		f.Updated()
-	}
 	return
 }
 
@@ -114,15 +88,52 @@ func (d *LocalDir) updateFileList(rd *remotedir.RemoteDir) {
 			// 服务器标记删除的不添加
 			continue
 		}
-		f, ok := d.setFile(fp, false)
-		if ok {
-			f.SetOffset(item.Offset)
-			// 如果服务器offset小于文件大小，标记为更新
-			if f.Size > item.Offset {
-				f.Updated()
-			}
+		f, err := NewFile(d.Path, fp, item.Offset)
+		if err != nil {
+			continue
 		}
+		d.data[fp] = f
 	}
+}
+
+func (d *LocalDir) OnFileUpdate(fname string) (err error) {
+	d.rwl.RLock()
+	f := d.data[fname]
+	d.rwl.RUnlock()
+	if f != nil {
+		err = f.Updated()
+		return
+	}
+
+	// 文件新增
+	nf, err := NewFile(d.Path, fname, 0)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	d.rwl.Lock()
+	defer d.rwl.Unlock()
+	f, ok := d.data[fname]
+	if ok {
+		err = f.Updated()
+		return
+	}
+
+	d.data[fname] = nf
+	return
+}
+
+func (d *LocalDir) OnFileDelete(fname string) {
+	d.rwl.Lock()
+	defer d.rwl.Unlock()
+
+	f := d.data[fname]
+	if f != nil {
+		f.Close()
+	}
+	log.Info("delete", fname)
+	delete(d.data, fname)
 }
 
 func (d *LocalDir) receiveEvent(errch chan error) {
@@ -131,7 +142,16 @@ func (d *LocalDir) receiveEvent(errch chan error) {
 		case ev := <-d.watcher.Event:
 			log.Info("get event", ev)
 			// must be modify
-			d.setFile(ev.Name, true)
+			fname := filepath.Base(ev.Name)
+			switch {
+			case ev.Match(inotify.IN_MODIFY):
+				err := d.OnFileUpdate(fname)
+				if err != nil {
+					log.Error(err)
+				}
+			case ev.Match(inotify.IN_DELETE):
+				d.OnFileDelete(fname)
+			}
 		case err := <-d.watcher.Error:
 			log.Error(err)
 			errch <- err
@@ -144,16 +164,14 @@ func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
 	for _ = range time.Tick(time.Second) {
 		d.rwl.RLock()
 		flist := d.GetSortedFiles()
-		// log.Info(d.Path, "loop", len(flist))
 		for _, f := range flist {
 			waitTime := time.Second
 		reWrite:
-			_, localErr, remoteErr := f.WriteTo(fw)
+			n, localErr, remoteErr := f.WriteTo(fw)
 			if localErr != nil {
-				log.Error(d.Path, "localErr:", localErr)
-				f.MarkDelete()
-			}
-			if remoteErr != nil {
+				log.Error(f.fpath, "localErr:", localErr, "n:", n)
+				f.Close()
+			} else if remoteErr != nil {
 				log.Println(d.Path, "remoteErr:", remoteErr, "sleep", waitTime)
 				// remote error, like, disk full, retry forever
 				time.Sleep(waitTime)
@@ -167,17 +185,13 @@ func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
 
 		// remove
 		now := time.Now()
-		removed := 0
 		d.rwl.Lock()
-		for p, f := range d.data {
-			if f.NeedFree(now) {
-				removed ++
+		for _, f := range d.data {
+			if f.NeedClose(now) {
 				f.Close()
-				delete(d.data, p)
 			}
 		}
 		d.rwl.Unlock()
-		// log.Info(d.Path, "remove", removed, "file")
 	}
 }
 

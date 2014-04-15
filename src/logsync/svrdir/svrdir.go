@@ -3,6 +3,7 @@ package svrdir
 import (
 	"net"
 	"net/rpc"
+	"strings"
 	"logsync/log"
 	"logsync/svrfile"
 )
@@ -12,23 +13,25 @@ var (
 )
 
 type SvrDir struct {
+	Root string
 	Host string
 	Path string
 	file *svrfile.SvrFile
 	svr *rpc.Server
 }
 
-func ServeConn(file *svrfile.SvrFile, conn net.Conn) {
+func ServeConn(root string, file *svrfile.SvrFile, conn net.Conn) {
 	s := new(SvrDir)
 	s.file = file
 	svr := rpc.NewServer()
 	svr.RegisterName("Dir", s)
+	s.Root = root
 	s.svr = svr
 	s.svr.ServeConn(conn)
 }
 
 func (s *SvrDir) makePath(fname string) string {
-	return s.Host + "/" + s.Path + "/" + fname
+	return s.Root + "/" + s.Host + "/" + s.Path + "/" + fname
 }
 
 // Conf ------------------------------------------------------------------------
@@ -41,7 +44,7 @@ type ConfReply struct {
 }
 func (s *SvrDir) Conf(arg *ConfArg, reply *ConfReply) (err error) {
 	s.Host = arg.Host
-	s.Path = arg.Path
+	s.Path = strings.Trim(arg.Path, "/")
 	return
 }
 
@@ -80,6 +83,7 @@ func (s *SvrDir) FileInfo(arg *FileOffsetArg, reply *FileOffsetReply) (err error
 		}
 		infos[f] = info
 	}
+	log.Info(infos)
 	reply.Infos = infos
 	return
 }

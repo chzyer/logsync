@@ -50,7 +50,7 @@ func (s *Service) Run() (err error) {
 			log.Error(err)
 			continue
 		}
-		go svrdir.ServeConn(s.file, conn)
+		go svrdir.ServeConn(s.WritePath, s.file, conn)
 	}
 }
 

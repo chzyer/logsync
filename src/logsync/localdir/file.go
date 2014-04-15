@@ -6,6 +6,8 @@ import (
 	"time"
 	"sync"
 	"sort"
+
+	"logsync/log"
 )
 
 var (
@@ -39,21 +41,13 @@ type File struct {
 	offset int64
 	MTime time.Time
 	updateTime time.Time
-	willDelete bool
-	Size int64
-	err error
 	buf []byte
 }
 
-func NewFile(dir, fname string, updated bool) (f *File, err error) {
+func NewFile(dir, fname string, offset int64) (f *File, err error) {
 	f = new(File)
-	length := len(dir)
-	if dir[length-1] == '/' {
-		dir = dir[:length-1]
-	}
-	f.fpath = dir + "/" + fname
-	f.fname = fname
-	f.updated = updated
+	f.initPath(dir, fname)
+
 	stat, err := os.Stat(f.fpath)
 	if err != nil {
 		return
@@ -64,54 +58,65 @@ func NewFile(dir, fname string, updated bool) (f *File, err error) {
 	}
 	f.updateTime = time.Now()
 	f.MTime = stat.ModTime()
-	f.Size = stat.Size()
+	if offset < stat.Size() {
+		f.Updated()
+	}
 	return
 }
 
-func (f *File) NeedFree(now time.Time) bool {
-	if f.willDelete {
-		return true
+func (f *File) initPath(dir, fname string) {
+	length := len(dir)
+	if dir[length-1] == '/' {
+		dir = dir[:length-1]
 	}
+	f.fpath = dir + "/" + fname
+	f.fname = fname
+
+}
+
+func (f *File) IsUpdated() bool {
+	return f.updated
+}
+
+func (f *File) NeedClose(now time.Time) bool {
 	return now.Sub(f.updateTime) > TimeIdle
 }
 
-func (f *File) MarkDelete() {
-	f.willDelete = true
-}
-
-func (f *File) Updated() {
+func (f *File) Updated() (err error) {
+	log.Info("set file", f.fname, "updated")
+	err = f.initFile()
+	if err != nil {
+		return
+	}
 	f.updated = true
 	f.updateTime = time.Now()
+	return
 }
 
 func (f *File) SetOffset(offset int64) {
+	log.Info(f.fpath, offset)
 	f.offset = offset
 	f.updateTime = time.Now()
 }
 
-func (f *File) initFile() {
+func (f *File) initFile() (err error) {
 	if f.file != nil {
 		return
 	}
-	f.file, f.err = os.OpenFile(f.fpath, os.O_RDONLY, 0666)
+	f.file, err = os.OpenFile(f.fpath, os.O_RDONLY, 0666)
+	if err != nil {
+		return
+	}
 	f.buf = make([]byte, DefaultWriteSize)
+	return
 }
 
 func (f *File) WriteTo(fw FileWriter) (n int, localErr, remoteErr error) {
 	f.updateTime = time.Now()
-	f.initFile()
-	if f.err != nil {
-		localErr = f.err
-		return
-	}
-	stat, err := f.file.Stat()
-	if err != nil {
-		return
-	}
-	size := stat.Size()-f.offset
+	f.updated = false
 
 	var rn, wn int
-	for localErr==nil && remoteErr==nil && size>0 {
+	for localErr==nil && remoteErr==nil {
 		rn, localErr = f.file.ReadAt(f.buf, f.offset)
 		if rn == 0 {
 			break
@@ -127,9 +132,7 @@ func (f *File) WriteTo(fw FileWriter) (n int, localErr, remoteErr error) {
 			break
 		}
 		n += wn
-		wn64 := int64(wn)
-		f.offset += wn64
-		size -= wn64
+		f.offset += int64(wn)
 	}
 
 	if localErr == io.EOF && n > 0 {
@@ -139,8 +142,10 @@ func (f *File) WriteTo(fw FileWriter) (n int, localErr, remoteErr error) {
 }
 
 func (f *File) Close() (err error) {
+	f.updated = false
 	if f.file != nil {
 		err = f.file.Close()
+		f.file = nil
 	}
 	return
 }
