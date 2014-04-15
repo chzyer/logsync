@@ -143,17 +143,17 @@ func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
 	for _ = range time.Tick(time.Second) {
 		d.rwl.RLock()
 		flist := d.GetSortedFiles()
-		log.Info("loop", len(flist))
+		log.Info(d.path, "loop", len(flist))
 		for _, f := range flist {
 			waitTime := time.Second
 		reWrite:
 			_, localErr, remoteErr := f.WriteTo(fw)
 			if localErr != nil {
-				log.Error("localErr:", localErr)
+				log.Error(d.path, "localErr:", localErr)
 				f.MarkDelete()
 			}
 			if remoteErr != nil {
-				log.Println("remoteErr:", remoteErr, "sleep", waitTime)
+				log.Println(d.path, "remoteErr:", remoteErr, "sleep", waitTime)
 				// remote error, like, disk full, retry forever
 				time.Sleep(waitTime)
 				if waitTime < time.Minute {
@@ -176,7 +176,7 @@ func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
 			}
 		}
 		d.rwl.Unlock()
-		log.Info("remove", removed, "file")
+		log.Info(d.path, "remove", removed, "file")
 	}
 }
 
