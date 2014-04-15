@@ -24,7 +24,7 @@ func (f FileSlice) Less(i, j int) bool {
 	return f[i].MTime.Before(f[j].MTime)
 }
 func (f FileSlice) Swap(i, j int) {
-	f[i], f[j] = f[i], f[j]
+	f[i], f[j] = f[j], f[i]
 }
 func (f FileSlice) Len() int {
 	return len(f)

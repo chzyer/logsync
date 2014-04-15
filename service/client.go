@@ -30,6 +30,12 @@ type Client struct {
 
 func NewClient(c *Conf) (client *Client) {
 	client = &Client{Conf:c}
+	client.UpdatePath()
+	log.Info("sync directory...", client.DirPath)
+	return
+}
+
+func (c *Client) UpdatePath() {
 	for _, pb := range c.Path {
 		ps, err := filepath.Glob(pb)
 		if err != nil {
@@ -39,12 +45,10 @@ func NewClient(c *Conf) (client *Client) {
 		for _, p := range ps {
 			stat, _ := os.Stat(p)
 			if stat != nil && stat.IsDir() {
-				client.DirPath = append(client.DirPath, p)
+				c.DirPath = append(c.DirPath, p)
 			}
 		}
 	}
-	log.Info("sync directory...", client.DirPath)
-	return
 }
 
 func (c *Client) syncDir(p string, errChan chan error) {
