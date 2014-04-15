@@ -66,7 +66,6 @@ func (s *SvrDir) WriteAt(arg *WriteAtArg, reply *WriteAtReply) (err error) {
 type FileOffsetArg struct {
 	Fname []string
 }
-
 type FileOffsetReply struct {
 	Infos map[string] *svrfile.FileInfo
 }

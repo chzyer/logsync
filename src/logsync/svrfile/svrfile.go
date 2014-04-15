@@ -10,17 +10,19 @@ import (
 type SvrFile struct {
 	rwl sync.RWMutex
 	data map[string] *os.File
-	OwnerUid,OwnerGid string
+	user *user.User
 }
 
 func NewSvrFile(owner string) (s *SvrFile, err error) {
-	u, err := user.Lookup(owner)
-	if err != nil {
-		return
-	}
 	s = new(SvrFile)
-	s.OwnerUid = u.Uid
-	s.OwnerGid = u.Gid
+	if owner != "" {
+		var u *user.User
+		u, err = user.Lookup(owner)
+		if err != nil {
+			return
+		}
+		s.user = u
+	}
 	return
 }
 
@@ -42,6 +44,7 @@ func (s *SvrFile) getFile(path string) (f *os.File, err error) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		os.MkdirAll(dir, 0777)
 	}
+	// change file owner
 	nf, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		// disk full

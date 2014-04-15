@@ -140,13 +140,21 @@ func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
 		flist := d.GetSortedFiles()
 		log.Info("loop", len(flist))
 		for _, f := range flist {
+			waitTime := time.Second
+		reWrite:
 			_, localErr, remoteErr := f.WriteTo(fw)
 			if localErr != nil {
 				log.Error("localErr:", localErr)
 				f.MarkDelete()
 			}
 			if remoteErr != nil {
-				log.Println("remoteErr:", remoteErr)
+				log.Println("remoteErr:", remoteErr, "sleep", waitTime)
+				// remote error, like, disk full, retry forever
+				time.Sleep(waitTime)
+				if waitTime < time.Minute {
+					waitTime *= 2
+				}
+				goto reWrite
 			}
 		}
 		d.rwl.RUnlock()
