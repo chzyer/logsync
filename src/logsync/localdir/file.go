@@ -41,7 +41,7 @@ type File struct {
 	offset int64
 	MTime time.Time
 	updateTime time.Time
-	buf []byte
+	// buf []byte
 }
 
 func NewFile(dir, fname string, offset int64) (f *File, err error) {
@@ -107,22 +107,23 @@ func (f *File) initFile() (err error) {
 	if err != nil {
 		return
 	}
-	f.buf = make([]byte, DefaultWriteSize)
+	// f.buf = make([]byte, DefaultWriteSize)
 	return
 }
 
 func (f *File) WriteTo(fw FileWriter) (n int, localErr, remoteErr error) {
 	f.updateTime = time.Now()
+	buf := make([]byte, DefaultWriteSize)
 	f.updated = false
 
 	var rn, wn int
 	for localErr==nil && remoteErr==nil {
-		rn, localErr = f.file.ReadAt(f.buf, f.offset)
+		rn, localErr = f.file.ReadAt(buf, f.offset)
 		if rn == 0 {
 			break
 		}
 
-		wn, remoteErr = fw.WriteAt(f.fname, f.buf[:rn], f.offset)
+		wn, remoteErr = fw.WriteAt(f.fname, buf[:rn], f.offset)
 		if wn == 0 {
 			break
 		}
@@ -146,7 +147,7 @@ func (f *File) Close() (err error) {
 	if f.file != nil {
 		err = f.file.Close()
 		f.file = nil
-		f.buf = nil
+		// f.buf = nil
 	}
 	return
 }
