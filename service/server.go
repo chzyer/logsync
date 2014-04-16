@@ -1,5 +1,5 @@
 package main
-// run: make -C ../ && ../bin/server -c ../server.conf
+// run: make -C ../ server && ../bin/server -c ../server.conf
 // build: make -C ../
 
 import (
@@ -18,7 +18,7 @@ var (
 )
 
 type Conf struct {
-	WritePath string `json:"write_path"`
+	WritePath []string `json:"write_path"` // 支持多个hash均匀分布(host)
 	Listen string `json:"listen"`
 	Owner string `json:"owner"` // 留空表示试用当前用户
 }
@@ -63,7 +63,7 @@ func main() {
 	conf := new(Conf)
 	err = json.Unmarshal(data, conf)
 	if err != nil {
-		log.Exit(err)
+		log.Exit(string(data), err)
 	}
 
 	s, err := NewService(conf)

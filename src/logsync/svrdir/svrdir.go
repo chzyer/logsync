@@ -3,7 +3,7 @@ package svrdir
 import (
 	"net"
 	"net/rpc"
-	"strings"
+	"hash/crc32"
 	"logsync/log"
 	"logsync/svrfile"
 )
@@ -13,38 +13,58 @@ var (
 )
 
 type SvrDir struct {
-	Root string
-	Host string
-	Path string
+	root []string
+	HashRoot string
 	file *svrfile.SvrFile
 	svr *rpc.Server
 }
 
-func ServeConn(root string, file *svrfile.SvrFile, conn net.Conn) {
+func ServeConn(root []string, file *svrfile.SvrFile, conn net.Conn) {
 	s := new(SvrDir)
+	s.root = root
 	s.file = file
 	svr := rpc.NewServer()
 	svr.RegisterName("Dir", s)
-	s.Root = root
 	s.svr = svr
 	s.svr.ServeConn(conn)
 }
 
+func (s *SvrDir) getHashRoot(host string) string {
+	return s.root[int(crc32.ChecksumIEEE([]byte(host))) % len(s.root)]
+}
+
 func (s *SvrDir) makePath(fname string) string {
-	return s.Root + "/" + s.Host + "/" + s.Path + "/" + fname
+	return s.HashRoot + "/" + fname
 }
 
 // Conf ------------------------------------------------------------------------
 
 type ConfArg struct {
-	Host, Path string
+	Host string
+	LogType string
+	ServiceName string
+	ServiceType string
 }
 type ConfReply struct {
 	Err error
 }
 func (s *SvrDir) Conf(arg *ConfArg, reply *ConfReply) (err error) {
-	s.Host = arg.Host
-	s.Path = strings.Trim(arg.Path, "/")
+	root := s.getHashRoot(arg.Host + "/" + arg.ServiceName + "/" + arg.LogType)
+	path := arg.Host + "/" + arg.ServiceType + "/" + arg.ServiceName + "/" + arg.LogType
+	s.HashRoot = root + "/" + path
+	return
+}
+
+// DeleteFile ------------------------------------------------------------------
+
+type DeleteFileArg struct {
+	Fname []string
+}
+type DeleteFileReply struct {
+	Err error
+}
+func (s *SvrDir) DeleteFile(arg *DeleteFileArg, reply *DeleteFileReply) (err error) {
+	log.Todo("delete file", arg)
 	return
 }
 

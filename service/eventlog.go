@@ -24,6 +24,7 @@ func main() {
 		case ev.Match(inotify.IN_OPEN):
 		case ev.Match(inotify.IN_CLOSE):
 		case ev.Match(inotify.IN_ACCESS):
+		case ev.Match(inotify.IN_MODIFY):
 		default:
 			log.Println("[INFO]", ev)
 		}

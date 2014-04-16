@@ -20,12 +20,15 @@ type LocalDir struct {
 	Path string
 	watcher *inotify.Watcher
 	err error
+	isdir bool
 	rwl sync.RWMutex
 
 	// 文件添加后，除非被删除，否则一直存留在data
 	// 当文件空闲时，会被关闭，File.file会置于nil
 	// 当文件被置于updated时，File.file会被打开
 	data map[string] *File
+
+	deleted []string
 }
 
 func NewDir(p string) (d *LocalDir, err error) {
@@ -34,25 +37,25 @@ func NewDir(p string) (d *LocalDir, err error) {
 		return
 	}
 
-	if ! stat.IsDir() {
-		err = ErrNotDirectory
-		return
-	}
-
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
 		return
 	}
 
-	err = watcher.AddWatch(p, inotify.IN_MODIFY|inotify.IN_DELETE)
+	err = watcher.AddWatch(p, inotify.IN_MODIFY|inotify.IN_DELETE|inotify.IN_MOVED_FROM)
 	if err != nil {
 		return
 	}
 
 	d = new(LocalDir)
+	d.isdir = stat.IsDir()
 	d.Path = p
 	d.watcher = watcher
-	d.data = make(map[string] *File, 1<<10)
+	size := 1<<10
+	if ! d.isdir {
+		size = 1
+	}
+	d.data = make(map[string] *File, size)
 	return
 }
 
@@ -124,16 +127,16 @@ func (d *LocalDir) OnFileUpdate(fname string) (err error) {
 	return
 }
 
-func (d *LocalDir) OnFileDelete(fname string) {
+func (d *LocalDir) onFileDelete(fname string) {
 	d.rwl.Lock()
-	defer d.rwl.Unlock()
-
+	d.deleted = append(d.deleted, fname)
 	f := d.data[fname]
 	if f != nil {
 		f.Close()
 	}
 	log.Info("delete", fname)
 	delete(d.data, fname)
+	d.rwl.Unlock()
 }
 
 func (d *LocalDir) receiveEvent(errch chan error) {
@@ -150,8 +153,11 @@ func (d *LocalDir) receiveEvent(errch chan error) {
 					log.Error(err)
 				}
 			case ev.Match(inotify.IN_DELETE):
+				// 如果当前文件被移除，应该删除
 				log.Info("get event", ev)
-				d.OnFileDelete(fname)
+				d.onFileDelete(fname)
+			case ev.Match(inotify.IN_MOVED_FROM):
+				log.Todo("小心nginx 机制会覆盖文件", ev)
 			}
 		case err := <-d.watcher.Error:
 			log.Error(err)
@@ -161,7 +167,7 @@ func (d *LocalDir) receiveEvent(errch chan error) {
 	}
 }
 
-func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
+func (d *LocalDir) syncingFile(errch chan error, fw *remotedir.RemoteDir) {
 	for _ = range time.Tick(time.Second) {
 		d.rwl.RLock()
 		flist := d.GetSortedFiles()
@@ -184,15 +190,30 @@ func (d *LocalDir) syncingFile(errch chan error, fw FileWriter) {
 		}
 		d.rwl.RUnlock()
 
-		// remove
 		now := time.Now()
 		d.rwl.Lock()
-		for _, f := range d.data {
-			if f.NeedClose(now) {
-				f.Close()
+
+		{
+			// close idle
+			for _, f := range d.data {
+				if f.NeedClose(now) {
+					f.Close()
+				}
+			}
+
+			// delete
+			if len(d.deleted) > 0 {
+				err := fw.DeleteFile(d.deleted)
+				if err != nil {
+					log.Error(err)
+				} else {
+					d.deleted = nil
+				}
 			}
 		}
+
 		d.rwl.Unlock()
+
 	}
 }
 

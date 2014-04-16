@@ -15,7 +15,9 @@ type FileInfo struct {
 
 type Info struct {
 	Host string
-	Path string
+	LogType string
+	ServiceName string
+	ServiceType string
 }
 
 type RemoteDir struct {
@@ -60,6 +62,23 @@ reconnect:
 	goto resend
 }
 
+// -----------------------------------------------------------------------------
+
+type DeleteFileArg struct {
+	Fname []string
+}
+type DeleteFileReply struct {
+	Err error
+}
+func (r *RemoteDir) DeleteFile(fname []string) (err error) {
+	reply := new(DeleteFileReply)
+	r.call("Dir.DeleteFile", &DeleteFileArg{fname}, reply)
+	err = reply.Err
+	return
+}
+
+// Conf ------------------------------------------------------------------------
+
 type ConfReply struct {
 	Err error
 }
@@ -69,6 +88,8 @@ func (r *RemoteDir) conf() (err error) {
 	err = reply.Err
 	return
 }
+
+// FileInfo --------------------------------------------------------------------
 
 type FileInfoArg struct { Fname []string }
 type FileInfoReply struct {
@@ -81,6 +102,8 @@ func (r *RemoteDir) FileInfo(fname []string) (ret map[string] *FileInfo, err err
 	ret, err = reply.Infos, reply.Err
 	return
 }
+
+// WriteAt ---------------------------------------------------------------------
 
 type WriteAtArg struct {
 	Fname string
@@ -98,6 +121,8 @@ func (r *RemoteDir) WriteAt(fname string, buf []byte, offset int64) (n int, remo
 	n, remoteErr = reply.N, reply.Err
 	return
 }
+
+// Close -----------------------------------------------------------------------
 
 func (r *RemoteDir) Close() (err error) {
 	err = r.client.Close()

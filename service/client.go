@@ -6,7 +6,6 @@ import (
 	"flag"
 	"io/ioutil"
 	"encoding/json"
-	"path/filepath"
 
 	"logsync/log"
 	"logsync/remotedir"
@@ -17,41 +16,39 @@ var (
 	confpath = flag.String("c", "client.conf", "conf file")
 )
 
+/*
+path: {
+	"$path": {
+		"name": "image1",
+		"type": "image",
+		"path": "path",
+	}
+}
+*/
+
+type XService struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Log map[string] string `json:"log"` // map[type] path
+}
+
 type Conf struct {
-	Host string `json:"host"`
-	Path []string `json:"path"` // support glob
+	Host string `json:"host"` // getHostname if empty
+	Service []XService `json:"service"`
 	ServerAddr string `json:"server_addr"`
 }
 
 type Client struct {
 	*Conf
-	DirPath []string
 }
 
 func NewClient(c *Conf) (client *Client) {
 	client = &Client{Conf:c}
-	client.UpdatePath()
-	log.Info("sync directory...", client.DirPath)
+	log.Obj("sync directory...", client.Service)
 	return
 }
 
-func (c *Client) UpdatePath() {
-	for _, pb := range c.Path {
-		ps, err := filepath.Glob(pb)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		for _, p := range ps {
-			stat, _ := os.Stat(p)
-			if stat != nil && stat.IsDir() {
-				c.DirPath = append(c.DirPath, p)
-			}
-		}
-	}
-}
-
-func (c *Client) syncDir(p string, errChan chan error) {
+func (c *Client) syncDir(service XService, logType string, errChan chan error) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -60,13 +57,16 @@ func (c *Client) syncDir(p string, errChan chan error) {
 	}()
 
 	remote, err := remotedir.NewDir(c.ServerAddr, &remotedir.Info {
-		Path: p,
 		Host: c.Host,
+		LogType: logType,
+		ServiceName: service.Name,
+		ServiceType: service.Type,
 	})
 	if err != nil {
 		return
 	}
 
+	p := service.Log[logType]
 	dir, err := localdir.NewDir(p)
 	if err != nil {
 		return
@@ -76,14 +76,17 @@ func (c *Client) syncDir(p string, errChan chan error) {
 
 func (c *Client) Run() (err error) {
 	errChan := make(chan error)
-	for _, p := range c.DirPath {
-		go c.syncDir(p, errChan)
+	for _, service := range c.Service {
+		for logType, _ := range service.Log {
+			go c.syncDir(service, logType, errChan)
+		}
 	}
-	err = <- errChan
+	err = <-errChan
 	return
 }
 
 func main() {
+	log.Info("started")
 	flag.Parse()
 	data, err := ioutil.ReadFile(*confpath)
 	if err != nil {
@@ -92,7 +95,10 @@ func main() {
 
 	conf := new(Conf)
 	if err=json.Unmarshal(data, conf); err != nil {
-		log.Exit(err)
+		log.Exit(string(data), err)
+	}
+	if conf.Host == "" {
+		conf.Host, _ = os.Hostname()
 	}
 
 	c := NewClient(conf)

@@ -31,6 +31,14 @@ var (
 	Panic = std.Panic
 	Exit = std.Exit
 	Obj = std.Obj
+	Todo = std.Todo
+)
+
+var (
+	INFO = "INFO"
+	ERROR = "ERROR"
+	PANIC = "PANIC"
+	TODO = "\x1b[0;35mTODO\x1b[0m"
 )
 
 func init() {
@@ -40,20 +48,23 @@ func init() {
 }
 
 func (l Logger) Println(o ...interface{}) { l.output("", o) }
-func (l Logger) Infof(f string, info ...interface{}) { l.output("INFO", []interface{}{fmt.Sprintf(f, info...)}) }
-func (l Logger) Info(info ...interface{}) { l.output("INFO", info) }
+func (l Logger) Infof(f string, info ...interface{}) { l.output(INFO, []interface{}{fmt.Sprintf(f, info...)}) }
+func (l Logger) Info(info ...interface{}) { l.output(INFO, info) }
 func (l Logger) Debug(info ...interface{}) {
 	if level > 0 { return }
 	l.output("DEBUG", info)
 }
-func (l Logger) Error(info ...interface{}) { l.output("ERROR", info) }
+func (l Logger) Todo(info ...interface{}) {
+	l.output(TODO, info)
+}
+func (l Logger) Error(info ...interface{}) { l.output(ERROR, info) }
 func (l Logger) Warn(info ...interface{}) { l.output("WARN", info) }
 func (l Logger) Panic(info interface{}) {
-	l.output("PANIC", []interface{}{info})
+	l.output(PANIC, []interface{}{info})
 	panic(info)
 }
-func (l Logger) Exit(info interface{}) {
-	l.output("EXIT", []interface{}{info})
+func (l Logger) Exit(info ...interface{}) {
+	l.output("EXIT", info)
 	os.Exit(1)
 }
 func (l Logger) Obj(o ...interface{}) {
