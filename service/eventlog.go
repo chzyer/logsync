@@ -23,6 +23,8 @@ func main() {
 		switch {
 		case ev.Match(inotify.IN_OPEN):
 		case ev.Match(inotify.IN_CLOSE):
+		case ev.Match(inotify.IN_CLOSE_WRITE):
+		case ev.Match(inotify.IN_CLOSE_NOWRITE):
 		case ev.Match(inotify.IN_ACCESS):
 		case ev.Match(inotify.IN_MODIFY):
 		default:

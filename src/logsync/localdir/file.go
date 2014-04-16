@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	DefaultWriteSize = 2 << 20
+	DefaultWriteSize = 4 << 20
 	TimeIdle = time.Minute
 )
 

@@ -192,7 +192,6 @@ func (d *LocalDir) syncingFile(errch chan error, fw *remotedir.RemoteDir) {
 
 		now := time.Now()
 		d.rwl.Lock()
-
 		{
 			// close idle
 			for _, f := range d.data {
@@ -211,7 +210,6 @@ func (d *LocalDir) syncingFile(errch chan error, fw *remotedir.RemoteDir) {
 				}
 			}
 		}
-
 		d.rwl.Unlock()
 
 	}
