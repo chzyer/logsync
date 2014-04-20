@@ -1,5 +1,5 @@
 package main
-// run: go build % && time cat req.log | ./tsdbsum -s 600 | ./sumfile -o stdout -i ningbo/nb8/REQ/LOGGER/logger
+// run: go build % && time cat req.log | ./tsdbsum -s 300 | ./sumfile -o stdout -i ningbo/nb8/REQ/LOGGER/logger
 
 import (
 	"io"
@@ -125,6 +125,10 @@ func main() {
 			buf.WriteByte(' ')
 			buf.WriteString(k)
 			buf.WriteByte('\n')
+		}
+		if *output == "stdout/" {
+			buf.WriteTo(os.Stdout)
+			continue
 		}
 
 		err = ioutil.WriteFile(path, buf.Bytes(), 0666)
