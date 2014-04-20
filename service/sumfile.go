@@ -38,9 +38,9 @@ func initArgs() {
 	tags = append(tags, "host="+sp[1])
 	tags = append(tags, "idc="+sp[0])
 	if sp[3] == "*" {
-		tags = append(tags, "stype="+sp[3])
+		tags = append(tags, "stype=LOGGER")
 	}
-	tags = append(tags, "stype="+sp[4])
+	tags = append(tags, "sname="+sp[4])
 	if len(tags) > 0 {
 		extraTag = " " + strings.Join(tags, " ")
 		tagPath = strings.Join(tags, ".") + "/"
