@@ -1,13 +1,15 @@
 package main
-// run: go build % && time cat req.log | ./tsdbsum -s 600 | ./sumfile -o /disk2 -host nb8 -idc ningbo -sname io1 -stype io
+// run: go build % && time cat req.log | ./tsdbsum -s 600 | ./sumfile -o stdout -i ningbo/nb8/REQ/LOGGER/logger
 
 import (
+	"io"
 	"os"
 	"log"
+	"flag"
+	"time"
 	"bytes"
 	"bufio"
 	"strings"
-	"flag"
 	"strconv"
 	"io/ioutil"
 )
@@ -16,68 +18,52 @@ var (
 	_ = ioutil.ReadAll
 	_ = log.Println
 	output = flag.String("o", "", "output")
-	host = flag.String("host", "", "host")
-	idc = flag.String("idc", "", "idc")
-	sname = flag.String("sname", "", "sname")
-	stype = flag.String("stype", "", "stype")
+	info = flag.String("i", "", "{idc}/{host}/{logtype}/{stype}/{sname}")
 	overwrite = flag.Bool("f", false, "overwrite if true else plus data")
+	pathInfo = ""
 	extraTag = ""
 	tagPath = ""
 )
 
-func init() {
+func initArgs() {
 	flag.Parse()
 	if *output == "" {
-		println("option -o is required!")
-		os.Exit(-3)
+		log.Println("option -o is required!")
+		os.Exit(1)
 	}
 	*output = strings.TrimRight(*output, "/") + "/"
 
+	sp := strings.Split(*info, "/")
 	tags := make([]string, 0, 4)
-	if *host == "" {
-		println("miss -host")
-		os.Exit(1)
+	tags = append(tags, "host="+sp[1])
+	tags = append(tags, "idc="+sp[0])
+	if sp[3] == "*" {
+		tags = append(tags, "stype="+sp[3])
 	}
-	if *idc == "" {
-		println("miss -idc")
-		os.Exit(1)
-	}
-	if *sname == "" {
-		println("miss -sname")
-		os.Exit(1)
-	}
-	if *stype == "" {
-		println("miss -stype")
-		os.Exit(1)
-	}
-	tags = append(tags, "host="+*host)
-	tags = append(tags, "idc="+*idc)
-	tags = append(tags, "sname="+*sname)
-	tags = append(tags, "stype="+*stype)
+	tags = append(tags, "stype="+sp[4])
 	if len(tags) > 0 {
 		extraTag = " " + strings.Join(tags, " ")
 		tagPath = strings.Join(tags, ".") + "/"
 	}
-
+	pathInfo = sp[1]+"/"+sp[4]
 }
 
-type KV struct {
-	Key string
-	Val string
-}
-
+// <table> <time> <tags...> <val>
 func main() {
+	initArgs()
 	data := make(map[string] map[string]string, 1440)
 	buf := bufio.NewReader(os.Stdin)
 	for {
 		l, _, err := buf.ReadLine()
 		if err != nil {
+			if err != io.EOF {
+				log.Println(err)
+				os.Exit(1)
+			}
 			break
 		}
 
 		idx := bytes.Index(l, []byte(" "))
-		l[idx] = '/'
-
 		lastIdx := bytes.LastIndex(l, []byte(" "))
 
 		path := string(l[:idx+11])
@@ -86,28 +72,32 @@ func main() {
 			m = make(map[string] string, 1024)
 			data[path] = m
 		}
-		m[string(l[idx+12: lastIdx])] = string(l[lastIdx+1:])
+		m[string(l[idx+12: lastIdx]) + extraTag] = string(l[lastIdx+1:])
 	}
 
 	for k, v := range data {
-		dirname := *output + k[:len(k)-10] + tagPath
+		timeStr := k
 		fname := k[len(k)-10:]
-		path := dirname + fname
-		err := os.MkdirAll(dirname, 0777)
+		timestamp, err := strconv.ParseInt(fname, 10, 64)
 		if err != nil {
-			println(err.Error())
+			log.Println("[ERROR]", err)
 			continue
+		}
+		date := time.Unix(timestamp, 0).Format("2006-01-02")
+		dirname := *output + date + "/" + timeStr[:len(timeStr)-11] + "/" + pathInfo + "/"
+		path := dirname + fname
+		err = os.MkdirAll(dirname, 0777)
+		if err != nil {
+			log.Println(err)
+			os.Exit(1)
 		}
 
 		if !*overwrite {
 			if tmpdata, err := ioutil.ReadFile(path); err == nil {
-				for _, d := range strings.Split(string(tmpdata), "\n") {
-					idx := strings.Index(d, " ")
-					if idx < 0 {
-						continue
-					}
-					key := d[idx+1:]
-					myval := d[:idx]
+				for _, d := range strings.Split(strings.TrimSpace(string(tmpdata)), "\n") {
+					data := strings.Split(d, " ")
+					key := strings.Join(data[4:], " ")
+					myval := data[3]
 					val, ok := v[key]
 					if !ok {
 						v[key] = myval
@@ -128,6 +118,9 @@ func main() {
 
 		buf := bytes.NewBuffer(make([]byte, 0, len(v)*100))
 		for k, vv := range v {
+			buf.WriteString("put ")
+			buf.WriteString(timeStr)
+			buf.WriteByte(' ')
 			buf.WriteString(vv)
 			buf.WriteByte(' ')
 			buf.WriteString(k)
@@ -136,7 +129,7 @@ func main() {
 
 		err = ioutil.WriteFile(path, buf.Bytes(), 0666)
 		if err != nil {
-			println(err.Error())
+			log.Println(err)
 		}
 	}
 }
