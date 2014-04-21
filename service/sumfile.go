@@ -37,8 +37,8 @@ func initArgs() {
 	tags := make([]string, 0, 4)
 	tags = append(tags, "host="+sp[1])
 	tags = append(tags, "idc="+sp[0])
-	if sp[3] == "*" {
-		tags = append(tags, "stype=LOGGER")
+	if sp[3] != "*" {
+		tags = append(tags, "stype="+sp[3])
 	}
 	tags = append(tags, "sname="+sp[4])
 	if len(tags) > 0 {
