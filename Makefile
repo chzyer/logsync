@@ -3,6 +3,15 @@ pwd := $(shell pwd)
 $(shell rm -fr pkg)
 all:server client eventlog
 
+tsdbimport:
+	go build -o bin/tsdbimport service/tsdbimport.go
+
+sumfile:
+	go build -o bin/sumfile service/sumfile.go
+
+tsdbsum:
+	go build -o bin/tsdbsum service/tsdbsum.go
+
 server:
 	go build -o bin/server service/server.go
 
@@ -11,3 +20,6 @@ client:
 
 eventlog:
 	go build -o bin/eventlog service/eventlog.go
+
+confmaker:
+	go build -o bin/confmaker service/confmaker.go

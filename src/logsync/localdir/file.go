@@ -13,6 +13,7 @@ import (
 )
 
 var (
+	_ = log.Println
 	DefaultWriteSize = 4 << 20
 	TimeIdle = time.Minute
 )
