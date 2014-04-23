@@ -6,6 +6,8 @@ import (
 	"time"
 	"sync"
 	"sort"
+	"strconv"
+	"syscall"
 
 	"logsync/log"
 )
@@ -39,6 +41,7 @@ type File struct {
 	l sync.Mutex
 	updated bool
 	offset int64
+	ino uint64
 	MTime time.Time
 	updateTime time.Time
 	// buf []byte
@@ -58,10 +61,20 @@ func NewFile(dir, fname string, offset int64) (f *File, err error) {
 	}
 	f.updateTime = time.Now()
 	f.MTime = stat.ModTime()
+	f.ino = stat.Sys().(*syscall.Stat_t).Ino
 	if offset < stat.Size() {
 		f.Updated()
 	}
 	return
+}
+
+func (f *File) InodeString() string {
+	data := make([]byte, 0, 16)
+	return string(strconv.AppendUint(data, f.ino, 10))
+}
+
+func (f *File) AliasName(fname string) {
+	f.fname = fname
 }
 
 func (f *File) initPath(dir, fname string) {
@@ -94,7 +107,9 @@ func (f *File) Updated() (err error) {
 }
 
 func (f *File) SetOffset(offset int64) {
-	log.Info(f.fpath, offset)
+	f.l.Lock()
+	defer f.l.Unlock()
+
 	f.offset = offset
 	f.updateTime = time.Now()
 }
@@ -112,6 +127,9 @@ func (f *File) initFile() (err error) {
 }
 
 func (f *File) WriteTo(fw FileWriter) (n int, localErr, remoteErr error) {
+	f.l.Lock()
+	defer f.l.Unlock()
+
 	f.updateTime = time.Now()
 	buf := make([]byte, DefaultWriteSize)
 	f.updated = false

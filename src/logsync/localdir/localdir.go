@@ -16,8 +16,22 @@ var (
 	ErrNotDirectory = errors.New("path except directory!")
 )
 
+/*
+单文件
+0x40  IN_MOVE
+0x100 IN_CREATE
+*/
+
+/*
+当localdir为单个文件时表示处理单个日志文件滚动，采用一下策略
+1. 文件名使用inode命名，防止单文件滚动导致覆盖
+2. data内可以存在多个文件(旧已滚动后的文件，还有当前已清空的文件)
+3. 文件被删除事件无法被捕捉。(文件被移动了)
+4. 文件更新后需要更变offset
+*/
 type LocalDir struct {
 	Path string
+	UseInodeName bool
 	watcher *inotify.Watcher
 	err error
 	isdir bool
@@ -25,13 +39,13 @@ type LocalDir struct {
 
 	// 文件添加后，除非被删除，否则一直存留在data
 	// 当文件空闲时，会被关闭，File.file会置于nil
-	// 当文件被置于updated时，File.file会被打开
+	// 当file.updated=true时，File.file会被打开
 	data map[string] *File
 
 	deleted []string
 }
 
-func NewDir(p string) (d *LocalDir, err error) {
+func NewDir(p string, useInodeName bool) (d *LocalDir, err error) {
 	stat, err := os.Stat(p)
 	if err != nil {
 		return
@@ -42,7 +56,7 @@ func NewDir(p string) (d *LocalDir, err error) {
 		return
 	}
 
-	err = watcher.AddWatch(p, inotify.IN_MODIFY|inotify.IN_DELETE|inotify.IN_MOVED_FROM)
+	err = watcher.AddWatch(p, inotify.IN_MODIFY|inotify.IN_DELETE|inotify.IN_MOVED_FROM|inotify.IN_CREATE)
 	if err != nil {
 		return
 	}
@@ -51,6 +65,7 @@ func NewDir(p string) (d *LocalDir, err error) {
 	d.isdir = stat.IsDir()
 	d.Path = p
 	d.watcher = watcher
+	d.UseInodeName = useInodeName
 	size := 1<<10
 	if ! d.isdir {
 		size = 1
@@ -81,8 +96,8 @@ func (d *LocalDir) updateFileList(rd *remotedir.RemoteDir) {
 	if err != nil {
 		return
 	}
-	for _, fp := range flist {
-		item, ok := data[fp]
+	for _, fname := range flist {
+		item, ok := data[fname]
 		if ! ok {
 			// 服务器没返回的不添加
 			continue
@@ -91,25 +106,39 @@ func (d *LocalDir) updateFileList(rd *remotedir.RemoteDir) {
 			// 服务器标记删除的不添加
 			continue
 		}
-		f, err := NewFile(d.Path, fp, item.Offset)
+		f, err := d.MakeFile(fname, item.Offset)
 		if err != nil {
 			continue
 		}
-		d.data[fp] = f
+		d.data[fname] = f
 	}
 }
 
-func (d *LocalDir) OnFileUpdate(fname string) (err error) {
+func (d *LocalDir) MakeFile(fname string, offset int64) (f *File, err error) {
+	f, err = NewFile(d.Path, fname, offset)
+	if err != nil {
+		return
+	}
+	if d.UseInodeName {
+		f.AliasName(f.InodeString())
+	}
+	return
+}
+
+func (d *LocalDir) OnFileUpdate(fname string, truncate bool) (err error) {
 	d.rwl.RLock()
 	f := d.data[fname]
 	d.rwl.RUnlock()
 	if f != nil {
+		if truncate {
+			f.SetOffset(0)
+		}
 		err = f.Updated()
 		return
 	}
 
 	// 文件新增
-	nf, err := NewFile(d.Path, fname, 0)
+	nf, err := d.MakeFile(fname, 0)
 	if err != nil {
 		log.Error(err)
 		return
@@ -147,8 +176,15 @@ func (d *LocalDir) receiveEvent(errch chan error) {
 			// must be modify
 			fname := filepath.Base(ev.Name)
 			switch {
+			case ev.Match(inotify.IN_CREATE):
+				// offset 清0
+				log.Info("truncate", ev.Name)
+				err := d.OnFileUpdate(fname, true)
+				if err != nil {
+					log.Error(err)
+				}
 			case ev.Match(inotify.IN_MODIFY):
-				err := d.OnFileUpdate(fname)
+				err := d.OnFileUpdate(fname, false)
 				if err != nil {
 					log.Error(err)
 				}

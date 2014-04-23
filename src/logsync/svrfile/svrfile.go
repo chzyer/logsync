@@ -2,8 +2,9 @@ package svrfile
 
 import (
 	"os"
-	"os/user"
+	"time"
 	"sync"
+	"os/user"
 	"logsync/log"
 	"path/filepath"
 )
@@ -11,6 +12,8 @@ import (
 type SvrFile struct {
 	rwl sync.RWMutex
 	data map[string] *os.File
+	updateTime map[string] time.Time
+	UnuseTime time.Duration
 	user *user.User
 }
 
@@ -25,6 +28,9 @@ func NewSvrFile(owner string) (s *SvrFile, err error) {
 		s.user = u
 	}
 	s.data = make(map[string]*os.File, 10<<10)
+	s.updateTime = make(map[string]time.Time, 10<<10)
+	s.UnuseTime = time.Minute
+	go s.CleanUnusedFile()
 	return
 }
 
@@ -33,8 +39,32 @@ type FileInfo struct {
 	Deleted bool
 }
 
+func (s *SvrFile) CleanUnusedFile() {
+	for _ = range time.Tick(time.Minute) {
+		now := time.Now()
+		s.rwl.Lock()
+		for k, v := range s.updateTime {
+			if now.Sub(v) > s.UnuseTime {
+				delete(s.updateTime, k)
+				s.closeFile(k)
+			}
+		}
+		s.rwl.Unlock()
+	}
+}
+
+func (s *SvrFile) closeFile(path string) (err error) {
+	f, ok := s.data[path]
+	if ok {
+		err = f.Close()
+		delete(s.data, path)
+	}
+	return
+}
+
 func (s *SvrFile) getFile(path string) (f *os.File, err error) {
 	s.rwl.RLock()
+	s.updateTime[path] = time.Now()
 	f = s.data[path]
 	s.rwl.RUnlock()
 	if f != nil {
@@ -46,11 +76,11 @@ func (s *SvrFile) getFile(path string) (f *os.File, err error) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		os.MkdirAll(dir, 0777)
 	}
-	// change file owner
+	// TODO: change file owner
 	nf, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
-		// disk full
-		log.Error(err)
+		// (disk full, invalid argument)
+		log.Info("create/open file error", err, "extra:", []byte(path))
 		return
 	}
 	s.rwl.Lock()

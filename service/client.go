@@ -29,6 +29,7 @@ path: {
 type XService struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
+	UseInodeName bool `json:"use_inode_name"`
 	Log map[string] string `json:"log"` // map[type] path
 }
 
@@ -67,7 +68,7 @@ func (c *Client) syncDir(service XService, logType string, errChan chan error) {
 	}
 
 	p := service.Log[logType]
-	dir, err := localdir.NewDir(p)
+	dir, err := localdir.NewDir(p, service.UseInodeName)
 	if err != nil {
 		return
 	}
