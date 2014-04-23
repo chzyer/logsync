@@ -31,6 +31,7 @@ var (
 */
 type LocalDir struct {
 	Path string
+	fname string
 	UseInodeName bool
 	watcher *inotify.Watcher
 	err error
@@ -63,6 +64,10 @@ func NewDir(p string, useInodeName bool) (d *LocalDir, err error) {
 
 	d = new(LocalDir)
 	d.isdir = stat.IsDir()
+	if ! d.isdir {
+		d.fname = filepath.Base(p)
+		p = filepath.Dir(p)
+	}
 	d.Path = p
 	d.watcher = watcher
 	d.UseInodeName = useInodeName
@@ -262,7 +267,8 @@ func (d *LocalDir) Sync(rd *remotedir.RemoteDir) (err error) {
 }
 
 func (d *LocalDir) fileList() (list []string, err error) {
-	dir, err := os.Open(d.Path)
+	println(d.Path+"/"+d.fname)
+	dir, err := os.Open(d.Path+"/"+d.fname)
 	if err != nil {
 		return
 	}
