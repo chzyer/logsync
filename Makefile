@@ -1,7 +1,10 @@
 export GOPATH := $(shell pwd)
 pwd := $(shell pwd)
 $(shell rm -fr pkg)
-all:server client eventlog
+all:server client
+
+filemark:
+	go build -o bin/filemark service/filemark.go
 
 tsdbimport:
 	go build -o bin/tsdbimport service/tsdbimport.go
